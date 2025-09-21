@@ -102,7 +102,7 @@ class DiceRollerApp extends StatelessWidget {
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
         return MaterialApp(
-          title: 'Dice Roller',
+          title: 'Dice',
           theme: lightTheme,
           darkTheme: darkTheme,
           themeMode: themeProvider.themeMode,
@@ -225,7 +225,7 @@ class DiceScreenState extends State<DiceScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dice Roller'),
+        title: const Text('Dice'),
         actions: [
           IconButton(
             icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),

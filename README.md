@@ -1,6 +1,6 @@
-# myapp
+# dice
 
-A new Flutter project.
+A dice rolling application.
 
 ## Getting Started
 

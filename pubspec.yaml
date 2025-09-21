@@ -1,5 +1,5 @@
-name: myapp
-description: "A new Flutter project."
+name: dice
+description: "A dice rolling application."
 publish_to: 'none'
 version: 1.0.0+1
 
