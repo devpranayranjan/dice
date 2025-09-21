@@ -7,6 +7,11 @@
   packages = [
     pkgs.jdk21
     pkgs.unzip
+    pkgs.chromium
+    pkgs.clang
+    pkgs.cmake
+    pkgs.ninja
+    pkgs.pkg-config
   ];
   # Sets environment variables in the workspace
   env = {};

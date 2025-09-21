@@ -1,122 +1,281 @@
+import 'dart:developer' as developer;
+import 'dart:math';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vibration/vibration.dart';
+
+import 'ad_helper.dart';
 
 void main() {
-  runApp(const MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb) {
+    MobileAds.instance.initialize();
+  }
+  runApp(
+    ChangeNotifierProvider(
+      create: (context) => ThemeProvider(),
+      child: const DiceRollerApp(),
+    ),
+  );
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class ThemeProvider with ChangeNotifier {
+  ThemeMode _themeMode = ThemeMode.system;
 
-  // This widget is the root of your application.
+  ThemeMode get themeMode => _themeMode;
+
+  void toggleTheme() {
+    _themeMode = _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+    notifyListeners();
+  }
+}
+
+const Color primarySeedColor = Colors.greenAccent;
+
+final TextTheme appTextTheme = TextTheme(
+  displayLarge: GoogleFonts.montserrat(
+      fontSize: 150,
+      fontWeight: FontWeight.bold,
+      shadows: [
+        const Shadow(blurRadius: 10.0, color: Colors.black26, offset: Offset(5.0, 5.0))
+      ]),
+  titleLarge: GoogleFonts.montserrat(fontSize: 24, fontWeight: FontWeight.bold),
+  bodyMedium: GoogleFonts.poppins(fontSize: 16),
+);
+
+final ThemeData lightTheme = ThemeData(
+  useMaterial3: true,
+  colorScheme: ColorScheme.fromSeed(
+    seedColor: primarySeedColor,
+    brightness: Brightness.light,
+  ),
+  textTheme: appTextTheme,
+  appBarTheme: AppBarTheme(
+    backgroundColor: primarySeedColor,
+    foregroundColor: Colors.black,
+    titleTextStyle: GoogleFonts.montserrat(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black),
+  ),
+  elevatedButtonTheme: ElevatedButtonThemeData(
+    style: ElevatedButton.styleFrom(
+      foregroundColor: Colors.black,
+      backgroundColor: primarySeedColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
+      textStyle: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w500),
+    ),
+  ),
+);
+
+final ThemeData darkTheme = ThemeData(
+  useMaterial3: true,
+  colorScheme: ColorScheme.fromSeed(
+    seedColor: primarySeedColor,
+    brightness: Brightness.dark,
+  ),
+  textTheme: appTextTheme,
+  appBarTheme: AppBarTheme(
+    backgroundColor: Colors.grey[900],
+    foregroundColor: Colors.white,
+    titleTextStyle: GoogleFonts.montserrat(fontSize: 24, fontWeight: FontWeight.bold),
+  ),
+  elevatedButtonTheme: ElevatedButtonThemeData(
+    style: ElevatedButton.styleFrom(
+      foregroundColor: Colors.black,
+      backgroundColor: primarySeedColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
+      textStyle: GoogleFonts.poppins(fontSize: 20, fontWeight: FontWeight.w500),
+    ),
+  ),
+);
+
+class DiceRollerApp extends StatelessWidget {
+  const DiceRollerApp({super.key});
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
+        return MaterialApp(
+          title: 'Dice Roller',
+          theme: lightTheme,
+          darkTheme: darkTheme,
+          themeMode: themeProvider.themeMode,
+          home: const DiceScreen(),
+        );
+      },
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class DiceScreen extends StatefulWidget {
+  const DiceScreen({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<DiceScreen> createState() => DiceScreenState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class DiceScreenState extends State<DiceScreen>
+    with SingleTickerProviderStateMixin {
+  int _diceValue = 1;
+  int _rollCount = 0;
+  late AnimationController _animationController;
+  BannerAd? _bannerAd;
+  bool _isBannerAdReady = false;
+  InterstitialAd? _interstitialAd;
 
-  void _incrementCounter() {
+  @override
+  void initState() {
+    super.initState();
+    _loadRollCount();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+
+    if (!kIsWeb) {
+      _bannerAd = BannerAd(
+        adUnitId: AdHelper.bannerAdUnitId,
+        request: const AdRequest(),
+        size: AdSize.banner,
+        listener: BannerAdListener(
+          onAdLoaded: (_) {
+            setState(() {
+              _isBannerAdReady = true;
+            });
+          },
+          onAdFailedToLoad: (ad, err) {
+            developer.log('Failed to load a banner ad: ${err.message}');
+            _isBannerAdReady = false;
+            ad.dispose();
+          },
+        ),
+      );
+
+      _bannerAd?.load();
+      _loadInterstitialAd();
+    }
+  }
+
+  Future<void> _loadRollCount() async {
+    final prefs = await SharedPreferences.getInstance();
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _rollCount = prefs.getInt('rollCount') ?? 0;
     });
+  }
+
+  Future<void> _incrementRollCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _rollCount++;
+      prefs.setInt('rollCount', _rollCount);
+    });
+  }
+
+  void _loadInterstitialAd() {
+    if (kIsWeb) return;
+    InterstitialAd.load(
+      adUnitId: AdHelper.interstitialAdUnitId,
+      request: const AdRequest(),
+      adLoadCallback: InterstitialAdLoadCallback(
+        onAdLoaded: (ad) {
+          _interstitialAd = ad;
+        },
+        onAdFailedToLoad: (err) {
+          developer.log('Failed to load an interstitial ad: ${err.message}');
+        },
+      ),
+    );
+  }
+
+  void _rollDice() {
+    _animationController.forward(from: 0.0);
+    setState(() {
+      _diceValue = Random().nextInt(6) + 1;
+    });
+    if (!kIsWeb) {
+      Vibration.vibrate(duration: 100);
+    }
+    _incrementRollCount();
+    if (_rollCount % 5 == 0) {
+      if (_interstitialAd != null) {
+        _interstitialAd!.show();
+        _loadInterstitialAd();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    _bannerAd?.dispose();
+    _interstitialAd?.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('Dice Roller'),
+        actions: [
+          IconButton(
+            icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
+            onPressed: () => themeProvider.toggleTheme(),
+            tooltip: 'Toggle Theme',
+          ),
+        ],
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDarkMode
+                ? [Colors.green[700]!, Colors.green[900]!]
+                : [Colors.greenAccent.shade100, Colors.greenAccent.shade400],
+          ),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              RotationTransition(
+                turns: _animationController,
+                child: GestureDetector(
+                  onTap: _rollDice,
+                  child: Text(
+                    '$_diceValue',
+                    style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                          color: isDarkMode ? Colors.white : Colors.black,
+                        ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 50),
+              ElevatedButton(
+                onPressed: _rollDice,
+                child: const Text('Roll Dice'),
+              ),
+            ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+      bottomNavigationBar: _isBannerAdReady && _bannerAd != null
+          ? SizedBox(
+              width: _bannerAd!.size.width.toDouble(),
+              height: _bannerAd!.size.height.toDouble(),
+              child: AdWidget(ad: _bannerAd!),
+            )
+          : const SizedBox(),
     );
   }
 }
